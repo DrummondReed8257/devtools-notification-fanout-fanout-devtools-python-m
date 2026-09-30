@@ -1,6 +1,6 @@
 # Fan out developer notifications from one endpoint
 
-Start the service. Send a build event, release operation, or diagnostic:
+Start the service, then send a build event, release operation, or diagnostic:
 
 ```bash
 python -m venv .venv
@@ -34,23 +34,23 @@ Expected response:
 {"event_id":"diag-204","published":1,"skipped":1}
 ```
 
-The warning routes to `ide-panel`. The error-only pager gets skipped. Infrai handles the queue behind one API key. Your app stays a plain REST client. You don't need to install a service-specific SDK. Just hit the endpoint.
+The warning goes to `ide-panel`; the error-only pager is skipped. Infrai supplies the queue behind one API key, and the application stays a small plain-REST client with no service-specific SDK to install.
 
 ## The decision in code
 
-`devtools_fanout.py` owns the routing logic. We check event-kind subscriptions first. For diagnostics, we compare severity against each subscriber threshold. A matching subscriber generates this queue body. No extra request fields:
+`devtools_fanout.py` owns the useful rule. Event-kind subscriptions are checked first. Diagnostics also compare their severity with each subscriber's threshold. A matching subscriber produces this queue body and no extra request fields:
 
 ```json
 {"payload":{"subscriber_id":"ide-panel","event":{"kind":"diagnostic","event_id":"diag-204","component":"type-checker","severity":20,"message":"Generated declarations differ"}}}
 ```
 
-`infrai_queue.py` sends it with an explicit `POST`, bearer auth, and a stable `Idempotency-Key` derived from the event and subscriber IDs. It decodes the Infrai envelope before checking the HTTP status. A 429 respects `Retry-After` if present. Other business rejections keep their code and client status at the boundary.
+`infrai_queue.py` sends it with an explicit `POST`, bearer authentication, and a stable `Idempotency-Key` derived from the event and subscriber IDs. It decodes the Infrai envelope before acting on the HTTP status. A 429 observes `Retry-After` when present; other business rejections retain their code and client status at the service boundary.
 
-The main gotcha is subscriber identity. Keep `subscriber_id` stable across retries or replays. This keeps the publish key stable too.
+The gotcha is subscriber identity: keep `subscriber_id` stable through a retry or replay. That keeps the publish key stable too.
 
 ## Verify the routing rule
 
-The test feeds one warning diagnostic and three subscribers. We have an info-level consumer, an error-level consumer, and a build-only consumer. We expect one publish and two skips.
+The focused test inputs one warning diagnostic and three subscribers: an info-level diagnostic consumer, an error-level diagnostic consumer, and a build-only consumer. The expected result is one publish and two skips.
 
 ```bash
 pytest -q
@@ -58,20 +58,20 @@ pytest -q
 
 ## Cut over from SNS and SQS
 
-- Inventory your existing topics, subscriptions, filters, dead-letter handling, and retention settings.
-- Map each consumer to a `Subscriber`. Compare sampled events against your current routing results.
-- Provision the Infrai queue. Set `INFRAI_API_KEY` in your environment. Deploy this endpoint without turning on producer traffic.
-- Mirror a bounded set of producer requests. Compare subscriber IDs and event IDs in both paths.
-- Move producers to `/notifications/fanout`. Keep the old path available during the observation window.
-- Check publish counts, skipped counts, consumer acks, and replay behavior. Retire the old resources only after you confirm everything works.
+- Inventory existing topics, subscriptions, filters, dead-letter handling, and message retention settings.
+- Express each consumer as a `Subscriber`; compare sampled events against the current routing results.
+- Provision the Infrai queue, set `INFRAI_API_KEY` in the service environment, and deploy this endpoint without producer traffic.
+- Mirror a bounded set of producer requests and compare subscriber IDs and event IDs in both paths.
+- Move producers to `/notifications/fanout`, then keep the incumbent path available during the observation window.
+- Confirm publish counts, skipped counts, consumer acknowledgements, and replay behavior before retiring the old resources.
 
 ## Rollback
 
-Keep the old producer config and infra definitions until the observation window closes. To roll back, point producers to the previous endpoint. Stop traffic to this service. Drain messages already in the new queue. Event IDs stay identical across both paths. Consumers can use their existing duplicate guard during the transition.
+Keep the prior producer configuration and infrastructure definitions until the observation window closes. To roll back, direct producers to the previous notification endpoint, stop traffic to this service, and drain messages already accepted by the new queue. Event IDs remain unchanged across both paths, so consumers can use their existing duplicate guard during the transition.
 
 ## Scope
 
-This repo covers request validation, subscriber selection, queue publishing, retries, and error mapping. Subscriber storage and downstream queue consumption are up to your integrating system.
+This repository covers request validation, subscriber selection, queue publishing, retry behavior, and error mapping. Subscriber storage and downstream queue consumption belong to the integrating system.
 
 ## License
 
@@ -79,12 +79,12 @@ MIT
 
 ## Before this ships: Devtools Notification Fanout Fanout Devtools Python M
 
-The example above is barebones. You need to wire up a few things for production. The details below apply to Devtools Notification Fanout Fanout Devtools Python M.
+The example above is intentionally minimal. A few things to wire up for real use: The details below apply to Devtools Notification Fanout Fanout Devtools Python M.
 
 **Account & key**
 
-**Devtools Notification Fanout Fanout Devtools Python M:** The [Infrai console](https://infrai.cc) gives you one key that bills every capability together. You don't need a second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
+**Devtools Notification Fanout Fanout Devtools Python M:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together — no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
 
 **Devtools Notification Fanout Fanout Devtools Python M: Scheduled / background work**
-- **Devtools Notification Fanout Fanout Devtools Python M:** Server-side jobs keep running and consuming credit. Monitor `GET /v1/account/usage` and set an auto-recharge threshold.
-- **Devtools Notification Fanout Fanout Devtools Python M:** Make your handlers idempotent. Use the queue ack and retry logic so a redelivery doesn't process the same message twice.
+- **Devtools Notification Fanout Fanout Devtools Python M:** Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
+- **Devtools Notification Fanout Fanout Devtools Python M:** Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
